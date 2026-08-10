@@ -167,21 +167,38 @@ const toggleDashboardBtn = document.getElementById('toggle-dashboard-btn');
 const dashboard = document.getElementById('dashboard');
 
 let isResizing = false;
+let activePointerId = null;
 const MIN_DASHBOARD_WIDTH = 280;
 const MIN_DASHBOARD_HEIGHT = 200;
 
-resizer.addEventListener('mousedown', (e) => {
+function startResize(e) {
   isResizing = true;
   resizer.classList.add('active');
   document.body.style.cursor = window.innerWidth > 1024 ? 'col-resize' : 'row-resize';
-  e.preventDefault();
-});
+  document.body.style.userSelect = 'none';
+  document.body.style.webkitUserSelect = 'none';
 
-document.addEventListener('mousemove', (e) => {
+  if (e.pointerId !== undefined && resizer.setPointerCapture) {
+    activePointerId = e.pointerId;
+    try {
+      resizer.setPointerCapture(e.pointerId);
+    } catch (err) {}
+  }
+  if (e.cancelable) {
+    e.preventDefault();
+  }
+}
+
+function handleResize(e) {
   if (!isResizing) return;
   
+  const clientX = e.clientX !== undefined ? e.clientX : (e.touches && e.touches[0] ? e.touches[0].clientX : null);
+  const clientY = e.clientY !== undefined ? e.clientY : (e.touches && e.touches[0] ? e.touches[0].clientY : null);
+
+  if (clientX === null || clientY === null) return;
+  
   if (window.innerWidth > 1024) {
-    const newWidth = e.clientX;
+    const newWidth = clientX;
     const remainingWidth = window.innerWidth - newWidth;
     
     if (remainingWidth < MIN_DASHBOARD_WIDTH) {
@@ -196,7 +213,7 @@ document.addEventListener('mousemove', (e) => {
       workspaceContainer.style.flex = `0 0 ${newWidth}px`;
     }
   } else {
-    const newHeight = e.clientY;
+    const newHeight = clientY;
     const remainingHeight = window.innerHeight - newHeight;
     
     if (remainingHeight < MIN_DASHBOARD_HEIGHT) {
@@ -213,15 +230,51 @@ document.addEventListener('mousemove', (e) => {
   }
   
   window.dispatchEvent(new Event('resize'));
-});
+}
 
-document.addEventListener('mouseup', () => {
+function stopResize() {
   if (isResizing) {
     isResizing = false;
     resizer.classList.remove('active');
     document.body.style.cursor = '';
+    document.body.style.userSelect = '';
+    document.body.style.webkitUserSelect = '';
+
+    if (activePointerId !== null && resizer.releasePointerCapture) {
+      try {
+        if (resizer.hasPointerCapture(activePointerId)) {
+          resizer.releasePointerCapture(activePointerId);
+        }
+      } catch (err) {}
+      activePointerId = null;
+    }
   }
-});
+}
+
+if (window.PointerEvent) {
+  resizer.addEventListener('pointerdown', startResize);
+  document.addEventListener('pointermove', handleResize);
+  document.addEventListener('pointerup', stopResize);
+  document.addEventListener('pointercancel', stopResize);
+} else {
+  resizer.addEventListener('mousedown', startResize);
+  document.addEventListener('mousemove', handleResize);
+  document.addEventListener('mouseup', stopResize);
+
+  resizer.addEventListener('touchstart', (e) => {
+    if (e.touches && e.touches.length === 1) {
+      startResize(e.touches[0]);
+    }
+  }, { passive: false });
+  document.addEventListener('touchmove', (e) => {
+    if (isResizing && e.touches && e.touches.length === 1) {
+      handleResize(e.touches[0]);
+      if (e.cancelable) e.preventDefault();
+    }
+  }, { passive: false });
+  document.addEventListener('touchend', stopResize);
+  document.addEventListener('touchcancel', stopResize);
+}
 
 toggleDashboardBtn.addEventListener('click', () => {
   dashboard.classList.remove('hidden');
